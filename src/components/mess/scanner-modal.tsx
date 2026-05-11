@@ -10,8 +10,10 @@ import {
 } from "lucide-react";
 import {
   commitScan,
+  commitInvalid,
   MEAL_PRICE,
   previewState,
+  validateQr,
   type ScanRecord,
 } from "@/lib/mess-store";
 
@@ -109,6 +111,15 @@ export function ScannerModal({
 
   function handleDecoded(qr: string) {
     stopScanner();
+    const validation = validateQr(qr);
+    if (!validation.ok) {
+      const r = commitInvalid(qr, validation.reason);
+      setRecord(r);
+      setPhase("result");
+      toast.error(validation.reason, { description: "Scan rejected." });
+      return;
+    }
+    const sessionMeal = validation.meal;
     const next = previewState();
     if (next === "pending") {
       setPendingQr(qr);
@@ -117,18 +128,20 @@ export function ScannerModal({
         description: "Insufficient balance for this meal.",
       });
     } else {
-      const r = commitScan(qr, true);
+      const r = commitScan(qr, true, sessionMeal);
       setRecord(r);
       setPhase("result");
       toast.success("Meal Approved", {
-        description: `${r.meal} · attendance marked. Balance ₹${r.balanceAfter.toFixed(2)}.`,
+        description: `${sessionMeal} · attendance marked. Balance ₹${r.balanceAfter.toFixed(2)}.`,
       });
     }
   }
 
   function answerCredit(yes: boolean) {
     if (!pendingQr) return;
-    const r = commitScan(pendingQr, yes);
+    const v = validateQr(pendingQr);
+    const sessionMeal = v.ok ? v.meal : undefined;
+    const r = commitScan(pendingQr, yes, sessionMeal);
     setRecord(r);
     setPhase("result");
     if (yes) {
