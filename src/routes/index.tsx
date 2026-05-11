@@ -23,7 +23,7 @@ export const Route = createFileRoute("/")({
 
 function MessPortal() {
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background pb-28">
       <div className="mx-auto max-w-md px-5 sm:max-w-lg">
         <TopBar />
         <BalanceHero />
