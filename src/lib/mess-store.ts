@@ -210,10 +210,10 @@ export function commitScan(qr: string, accepted = true): ScanRecord {
       {
         id: crypto.randomUUID(),
         ts: record.ts,
-        type: "credit",
+        type: "credit" as PaymentType,
         title: `${meal} on credit`,
         amount: -amount,
-        status: "Credit",
+        status: "Credit" as const,
       },
       ...state.payments,
     ].slice(0, 60);
