@@ -1,10 +1,11 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Bell, Globe, Moon, RefreshCw, Sparkles, Wallet } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Bell, Globe, LogOut, Moon, RefreshCw, Sparkles, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/hooks/use-theme";
 import { resetStore, updateSettings, useMessStore } from "@/lib/mess-store";
 import { SectionCard } from "@/components/mess/section-card";
+import { logout, useAuthStore } from "@/lib/auth-store";
 
 const LANGUAGES = ["English", "हिन्दी", "தமிழ்", "తెలుగు"] as const;
 
@@ -21,6 +22,8 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   const { settings } = useMessStore();
   const { theme, toggle } = useTheme();
+  const { user } = useAuthStore();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-background pb-28">
@@ -150,6 +153,34 @@ function SettingsPage() {
               Reset app data
             </span>
             <span className="text-[11px] text-muted-foreground">Mock</span>
+          </button>
+        </SectionCard>
+
+        <SectionCard className="mt-4">
+          <h3 className="mb-1 text-sm font-semibold text-foreground">Account</h3>
+          {user ? (
+            <p className="mb-3 text-[11px] text-muted-foreground">
+              Signed in as <span className="font-medium text-foreground">{user.name}</span> ·{" "}
+              {user.role === "admin" ? "Administrator" : user.rollNo ?? user.phone}
+            </p>
+          ) : null}
+          <button
+            onClick={() => {
+              logout();
+              toast("Signed out");
+              navigate({ to: "/login" });
+            }}
+            className="flex w-full items-center justify-between rounded-2xl border border-border bg-secondary px-4 py-3"
+          >
+            <span className="flex items-center gap-3 text-sm font-medium text-foreground">
+              <span
+                className="grid h-9 w-9 place-items-center rounded-xl text-white"
+                style={{ background: "var(--gradient-danger)" }}
+              >
+                <LogOut className="h-4 w-4" />
+              </span>
+              Log out
+            </span>
           </button>
         </SectionCard>
 

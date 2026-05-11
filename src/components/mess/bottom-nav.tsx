@@ -1,5 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { Home, Settings, ShieldCheck, User } from "lucide-react";
+import { useAuthStore } from "@/lib/auth-store";
 
 const TABS = [
   { to: "/", label: "Home", icon: Home },
@@ -8,8 +9,13 @@ const TABS = [
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
+const HIDDEN_ON = new Set(["/login", "/signup", "/forgot-password"]);
+
 export function BottomNav() {
   const { pathname } = useLocation();
+  const { user } = useAuthStore();
+  if (HIDDEN_ON.has(pathname) || !user) return null;
+  const tabs = TABS.filter((t) => t.to !== "/admin" || user.role === "admin");
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md items-center justify-around border-t border-border bg-card/80 px-2 py-2 backdrop-blur-xl sm:max-w-lg"
@@ -18,7 +24,7 @@ export function BottomNav() {
         paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)",
       }}
     >
-      {TABS.map((t) => {
+      {tabs.map((t) => {
         const active = pathname === t.to;
         const Icon = t.icon;
         return (
