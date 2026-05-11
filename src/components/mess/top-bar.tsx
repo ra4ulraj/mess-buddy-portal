@@ -1,9 +1,11 @@
 import { motion } from "framer-motion";
 import { Bell, Moon, Sun } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
+import { useMessStore } from "@/lib/mess-store";
 
-export function TopBar({ name = "Aarav Reddy", initials = "AR" }) {
+export function TopBar() {
   const { theme, toggle } = useTheme();
+  const { student } = useMessStore();
   return (
     <motion.header
       initial={{ opacity: 0, y: -10 }}
@@ -17,13 +19,15 @@ export function TopBar({ name = "Aarav Reddy", initials = "AR" }) {
           style={{ background: "var(--gradient-primary)" }}
         >
           <div className="flex h-full w-full items-center justify-center rounded-full bg-card text-sm font-semibold text-foreground">
-            {initials}
+            {student.initials}
           </div>
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card bg-success" />
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Welcome back</p>
-          <h1 className="text-base font-semibold text-foreground">{name}</h1>
+          <h1 className="text-base font-semibold text-foreground">
+            {student.name}
+          </h1>
         </div>
       </div>
       <div className="flex items-center gap-2">

@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   AlertCircle,
   CheckCircle2,
@@ -112,10 +113,16 @@ export function ScannerModal({
     if (next === "pending") {
       setPendingQr(qr);
       setPhase("askCredit");
+      toast.error("Payment Pending", {
+        description: "Insufficient balance for this meal.",
+      });
     } else {
       const r = commitScan(qr, true);
       setRecord(r);
       setPhase("result");
+      toast.success("Meal Approved", {
+        description: `${r.meal} · attendance marked. Balance ₹${r.balanceAfter.toFixed(2)}.`,
+      });
     }
   }
 
@@ -124,6 +131,13 @@ export function ScannerModal({
     const r = commitScan(pendingQr, yes);
     setRecord(r);
     setPhase("result");
+    if (yes) {
+      toast("Credit Activated", {
+        description: `Food taken on credit. Balance ₹${r.balanceAfter.toFixed(2)}.`,
+      });
+    } else {
+      toast("Meal declined", { description: "No charge applied." });
+    }
   }
 
   function rescan() {
