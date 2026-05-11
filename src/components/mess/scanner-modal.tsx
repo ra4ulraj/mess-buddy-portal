@@ -309,8 +309,8 @@ function ResultView({
       gradient: "var(--gradient-success)",
     },
     pending: {
-      title: "Meal Declined",
-      sub: "No food taken. Pay to resume.",
+      title: record.reason ?? "Meal Declined",
+      sub: record.reason ? "Scan rejected" : "No food taken. Pay to resume.",
       icon: AlertCircle,
       gradient: "var(--gradient-danger)",
     },
