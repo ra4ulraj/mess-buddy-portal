@@ -61,8 +61,7 @@ type Store = {
   tokenSalt: string;
 };
 
-// ----- Constants
-const LOCAL_KEY = "mess-local-v1"; // local-only state (payments, settings, qr admin)
+const LOCAL_KEY = "mess-local-v2";
 export const MEAL_PRICE = 50;
 export const MEAL_WINDOWS: Record<SessionMeal, { start: number; end: number }> = {
   Breakfast: { start: 7, end: 10 },
@@ -71,7 +70,6 @@ export const MEAL_WINDOWS: Record<SessionMeal, { start: number; end: number }> =
 };
 export const TOKEN_TTL_MS = 30_000;
 
-// ----- Helpers
 export function todayKey(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -134,7 +132,6 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-// ----- Defaults
 const DEFAULT_STUDENT: Student = {
   name: "Student",
   initials: "S",
@@ -175,15 +172,10 @@ function setState(patch: Partial<Store>) {
   emit();
 }
 
-// ----- Local persistence (payments, settings, QR admin only)
-type LocalSlice = Pick<
-  Store,
-  "payments" | "settings" | "activeMealOverride" | "tokenSalt"
->;
+type LocalSlice = Pick<Store, "settings" | "activeMealOverride" | "tokenSalt">;
 function persistLocal() {
   if (typeof window === "undefined") return;
   const slice: LocalSlice = {
-    payments: state.payments,
     settings: state.settings,
     activeMealOverride: state.activeMealOverride,
     tokenSalt: state.tokenSalt,
@@ -198,7 +190,6 @@ function loadLocal() {
       const parsed = JSON.parse(raw) as Partial<LocalSlice>;
       state = {
         ...state,
-        payments: parsed.payments ?? [],
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
         activeMealOverride: parsed.activeMealOverride ?? null,
         tokenSalt: parsed.tokenSalt ?? `s-${Date.now()}`,
@@ -209,7 +200,6 @@ function loadLocal() {
   }
 }
 
-// ----- Backend sync
 type DbAttendance = {
   id: string;
   meal_type: SessionMeal;
@@ -218,6 +208,16 @@ type DbAttendance = {
   balance_after: number | null;
   reason: string | null;
   scanned_at: string;
+};
+
+type DbPayment = {
+  id: string;
+  amount: number;
+  method: string | null;
+  payment_type: PaymentType;
+  status: PaymentRecord["status"];
+  title: string;
+  created_at: string;
 };
 
 function rowToScan(r: DbAttendance): ScanRecord {
@@ -230,6 +230,18 @@ function rowToScan(r: DbAttendance): ScanRecord {
     balanceAfter: Number(r.balance_after ?? 0),
     qr: "",
     reason: r.reason ?? undefined,
+  };
+}
+
+function rowToPayment(r: DbPayment): PaymentRecord {
+  return {
+    id: r.id,
+    ts: new Date(r.created_at).getTime(),
+    type: r.payment_type,
+    title: r.title,
+    amount: Number(r.amount ?? 0),
+    status: r.status,
+    method: r.method ?? undefined,
   };
 }
 
@@ -248,6 +260,7 @@ function rebuildAttendance(scans: ScanRecord[]) {
 let currentUserId: string | null = null;
 let attendanceChannel: ReturnType<typeof supabase.channel> | null = null;
 let profileChannel: ReturnType<typeof supabase.channel> | null = null;
+let paymentChannel: ReturnType<typeof supabase.channel> | null = null;
 
 async function loadProfile(userId: string) {
   const { data, error } = await supabase
@@ -288,28 +301,46 @@ async function loadAttendance(userId: string) {
     .select("id, meal_type, status, amount, balance_after, reason, scanned_at")
     .eq("student_id", userId)
     .order("scanned_at", { ascending: false })
-    .limit(60);
+    .limit(90);
   if (error) throw error;
   const scans = (data ?? []).map((r) => rowToScan(r as DbAttendance));
   setState({ scans, attendance: rebuildAttendance(scans) });
 }
 
+async function loadPayments(userId: string) {
+  const { data, error } = await supabase
+    .from("payments")
+    .select("id, amount, method, payment_type, status, title, created_at")
+    .eq("student_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(90);
+  if (error) {
+    console.warn("payment load failed", error.message);
+    return;
+  }
+  setState({ payments: (data ?? []).map((r) => rowToPayment(r as DbPayment)) });
+}
+
+async function removeRealtimeChannels() {
+  await Promise.all(
+    [attendanceChannel, profileChannel, paymentChannel]
+      .filter(Boolean)
+      .map((channel) => supabase.removeChannel(channel!)),
+  );
+  attendanceChannel = null;
+  profileChannel = null;
+  paymentChannel = null;
+}
+
 export async function syncForUser(userId: string | null) {
-  // unsubscribe previous
-  if (attendanceChannel) {
-    await supabase.removeChannel(attendanceChannel);
-    attendanceChannel = null;
-  }
-  if (profileChannel) {
-    await supabase.removeChannel(profileChannel);
-    profileChannel = null;
-  }
+  await removeRealtimeChannels();
   currentUserId = userId;
   if (!userId) {
     setState({
       student: DEFAULT_STUDENT,
       balance: 0,
       scans: [],
+      payments: [],
       attendance: {},
       hydrated: true,
       loading: false,
@@ -319,14 +350,13 @@ export async function syncForUser(userId: string | null) {
   }
   setState({ loading: true, error: null });
   try {
-    await Promise.all([loadProfile(userId), loadAttendance(userId)]);
+    await Promise.all([loadProfile(userId), loadAttendance(userId), loadPayments(userId)]);
     setState({ hydrated: true, loading: false });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load data";
     setState({ hydrated: true, loading: false, error: msg });
   }
 
-  // realtime
   profileChannel = supabase
     .channel(`profile-${userId}`)
     .on(
@@ -347,6 +377,20 @@ export async function syncForUser(userId: string | null) {
         filter: `student_id=eq.${userId}`,
       },
       () => void loadAttendance(userId).catch(() => undefined),
+    )
+    .subscribe();
+
+  paymentChannel = supabase
+    .channel(`payments-${userId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "payments",
+        filter: `student_id=eq.${userId}`,
+      },
+      () => void loadPayments(userId).catch(() => undefined),
     )
     .subscribe();
 }
@@ -377,7 +421,6 @@ export function useMessStore() {
   return snap;
 }
 
-// ----- Mutations
 export function previewState(): ScanState {
   if (state.balance >= MEAL_PRICE) return "approved";
   if (state.balance < 0) return "credit";
@@ -410,7 +453,7 @@ export async function commitInvalid(qr: string, reason: string): Promise<ScanRec
       /* fallthrough to local */
     }
   }
-  const fallback: ScanRecord = {
+  return {
     id: crypto.randomUUID(),
     ts: Date.now(),
     meal,
@@ -420,7 +463,11 @@ export async function commitInvalid(qr: string, reason: string): Promise<ScanRec
     qr,
     reason,
   };
-  return fallback;
+}
+
+async function insertPayment(input: Omit<DbPayment, "id" | "created_at"> & { student_id: string }) {
+  const { error } = await supabase.from("payments").insert(input);
+  if (error) console.warn("payment insert failed", error.message);
 }
 
 export async function commitScan(
@@ -457,7 +504,6 @@ export async function commitScan(
   }
 
   if (scanState === "pending") {
-    // declined — do not insert attendance; just return local record
     return {
       id: crypto.randomUUID(),
       ts: Date.now(),
@@ -482,32 +528,28 @@ export async function commitScan(
     .single();
   if (insErr) throw new Error(insErr.message);
 
-  // update balance
   const { error: upErr } = await supabase
     .from("profiles")
     .update({ balance: balanceAfter })
     .eq("id", userId);
   if (upErr) throw new Error(upErr.message);
 
-  // log credit as a payment (local)
   if (scanState === "credit") {
-    setState({
-      payments: [
-        {
-          id: crypto.randomUUID(),
-          ts: Date.now(),
-          type: "credit",
-          title: `${meal} on credit`,
-          amount: -amount,
-          status: "Credit",
-        },
-        ...state.payments,
-      ].slice(0, 60),
+    await insertPayment({
+      student_id: userId,
+      payment_type: "credit",
+      title: `${meal} on credit`,
+      amount: -amount,
+      status: "Credit",
+      method: null,
     });
   }
 
   const rec = rowToScan(ins as DbAttendance);
   rec.qr = qr;
+  setState({ balance: balanceAfter });
+  void loadAttendance(userId);
+  void loadPayments(userId);
   return rec;
 }
 
@@ -533,13 +575,24 @@ export async function addPayment(amount: number, method = "UPI · GPay"): Promis
   };
   if (userId) {
     const newBalance = state.balance + amount;
+    await insertPayment({
+      student_id: userId,
+      payment_type: "recharge",
+      title: "Wallet recharge",
+      amount,
+      status: "Paid",
+      method,
+    });
     const { error } = await supabase
       .from("profiles")
       .update({ balance: newBalance })
       .eq("id", userId);
     if (error) throw new Error(error.message);
+    setState({ balance: newBalance });
+    void loadPayments(userId);
+  } else {
+    setState({ payments: [rec, ...state.payments].slice(0, 60) });
   }
-  setState({ payments: [rec, ...state.payments].slice(0, 60) });
   return rec;
 }
 export function updateSettings(patch: Partial<Settings>) {
