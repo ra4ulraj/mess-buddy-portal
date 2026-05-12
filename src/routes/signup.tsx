@@ -32,7 +32,7 @@ function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (name.trim().length < 2) return setError("Enter your full name");
@@ -41,17 +41,15 @@ function SignupPage() {
     if (password.length < 6) return setError("Password must be at least 6 characters");
     if (password !== confirm) return setError("Passwords do not match");
     setLoading(true);
-    setTimeout(() => {
-      try {
-        const u = signupStudent({ name, rollNo, phone, password });
-        toast.success(`Welcome, ${u.name}`);
-        navigate({ to: "/" });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Signup failed");
-      } finally {
-        setLoading(false);
-      }
-    }, 500);
+    try {
+      const u = await signupStudent({ name, rollNo, phone, password });
+      toast.success(`Welcome, ${u.name}`);
+      navigate({ to: "/" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Signup failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

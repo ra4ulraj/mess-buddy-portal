@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChefHat } from "lucide-react";
 import { useAuthStore } from "@/lib/auth-store";
+import { syncForUser } from "@/lib/mess-store";
 
 const PUBLIC_PATHS = new Set(["/login", "/signup", "/forgot-password"]);
 
@@ -16,6 +17,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     const t = setTimeout(() => setShowSplash(false), 1100);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    void syncForUser(user?.id ?? null);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!hydrated || showSplash) return;

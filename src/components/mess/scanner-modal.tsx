@@ -109,11 +109,11 @@ export function ScannerModal({
     }
   }
 
-  function handleDecoded(qr: string) {
+  async function handleDecoded(qr: string) {
     stopScanner();
     const validation = validateQr(qr);
     if (!validation.ok) {
-      const r = commitInvalid(qr, validation.reason);
+      const r = await commitInvalid(qr, validation.reason);
       setRecord(r);
       setPhase("result");
       toast.error(validation.reason, { description: "Scan rejected." });
@@ -128,28 +128,37 @@ export function ScannerModal({
         description: "Insufficient balance for this meal.",
       });
     } else {
-      const r = commitScan(qr, true, sessionMeal);
-      setRecord(r);
-      setPhase("result");
-      toast.success("Meal Approved", {
-        description: `${sessionMeal} · attendance marked. Balance ₹${r.balanceAfter.toFixed(2)}.`,
-      });
+      try {
+        const r = await commitScan(qr, true, sessionMeal);
+        setRecord(r);
+        setPhase("result");
+        toast.success("Meal Approved", {
+          description: `${sessionMeal} · attendance marked. Balance ₹${r.balanceAfter.toFixed(2)}.`,
+        });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Scan failed");
+        setPhase("scanning");
+      }
     }
   }
 
-  function answerCredit(yes: boolean) {
+  async function answerCredit(yes: boolean) {
     if (!pendingQr) return;
     const v = validateQr(pendingQr);
     const sessionMeal = v.ok ? v.meal : undefined;
-    const r = commitScan(pendingQr, yes, sessionMeal);
-    setRecord(r);
-    setPhase("result");
-    if (yes) {
-      toast("Credit Activated", {
-        description: `Food taken on credit. Balance ₹${r.balanceAfter.toFixed(2)}.`,
-      });
-    } else {
-      toast("Meal declined", { description: "No charge applied." });
+    try {
+      const r = await commitScan(pendingQr, yes, sessionMeal);
+      setRecord(r);
+      setPhase("result");
+      if (yes) {
+        toast("Credit Activated", {
+          description: `Food taken on credit. Balance ₹${r.balanceAfter.toFixed(2)}.`,
+        });
+      } else {
+        toast("Meal declined", { description: "No charge applied." });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Scan failed");
     }
   }
 
