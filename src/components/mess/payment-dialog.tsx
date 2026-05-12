@@ -16,17 +16,20 @@ export function PaymentDialog({
   const [amount, setAmount] = useState<number>(1000);
   const [loading, setLoading] = useState(false);
 
-  function pay() {
+  async function pay() {
     if (amount <= 0) return;
     setLoading(true);
-    setTimeout(() => {
-      addPayment(amount);
-      setLoading(false);
+    try {
+      await addPayment(amount);
       toast.success("Payment successful", {
         description: `₹${amount} added to your mess wallet.`,
       });
       onClose();
-    }, 800);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Payment failed");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

@@ -28,24 +28,22 @@ function ForgotPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!rollNo.trim()) return setError("Enter your registration");
     if (pw.length < 6) return setError("Password must be at least 6 characters");
     if (pw !== confirm) return setError("Passwords do not match");
     setLoading(true);
-    setTimeout(() => {
-      try {
-        resetPassword(rollNo, pw);
-        toast.success("Password updated", { description: "You can sign in now." });
-        navigate({ to: "/login" });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not reset");
-      } finally {
-        setLoading(false);
-      }
-    }, 500);
+    try {
+      await resetPassword(rollNo, pw);
+      toast.success("Password updated", { description: "You can sign in now." });
+      navigate({ to: "/login" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reset");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

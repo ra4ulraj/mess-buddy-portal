@@ -165,7 +165,7 @@ function SettingsPage() {
             </p>
           ) : null}
           <button
-            onClick={() => {
+            onClick={async () => {
               logout();
               toast("Signed out");
               navigate({ to: "/login" });

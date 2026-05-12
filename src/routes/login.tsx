@@ -113,23 +113,21 @@ function StudentForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!rollNo.trim()) return setError("Enter your registration number");
     if (!password) return setError("Enter your password");
     setLoading(true);
-    setTimeout(() => {
-      try {
-        const u = loginStudent(rollNo, password);
-        toast.success(`Welcome, ${u.name}`);
-        navigate({ to: "/" });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Login failed");
-      } finally {
-        setLoading(false);
-      }
-    }, 400);
+    try {
+      const u = await loginStudent(rollNo, password);
+      toast.success(`Welcome, ${u.name}`);
+      navigate({ to: "/" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -192,8 +190,7 @@ function PhoneForm() {
     setLoading(true);
     setTimeout(() => {
       try {
-        const code = requestOtp(phone);
-        toast.success("OTP sent", { description: `Demo code: ${code}` });
+        requestOtp(phone);
         setStep("otp");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not send OTP");
@@ -283,21 +280,19 @@ function AdminForm() {
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      try {
-        loginAdmin(email, password);
-        toast.success("Admin signed in");
-        navigate({ to: "/admin" });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Login failed");
-      } finally {
-        setLoading(false);
-      }
-    }, 400);
+    try {
+      await loginAdmin(email, password);
+      toast.success("Admin signed in");
+      navigate({ to: "/admin" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

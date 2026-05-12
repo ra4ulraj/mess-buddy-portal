@@ -1,8 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { getCurrentUser } from "./auth-store";
 
 export type ScanState = "approved" | "pending" | "credit";
 export type Meal = "Breakfast" | "Lunch" | "Snacks" | "Dinner";
 export type SessionMeal = "Breakfast" | "Lunch" | "Dinner";
+
 export type ScanRecord = {
   id: string;
   ts: number;
@@ -20,7 +23,7 @@ export type PaymentRecord = {
   ts: number;
   type: PaymentType;
   title: string;
-  amount: number; // positive for recharge, negative for credit/due
+  amount: number;
   status: "Paid" | "Credit" | "Pending";
   method?: string;
 };
@@ -46,35 +49,32 @@ export type Settings = {
 
 type Store = {
   hydrated: boolean;
+  loading: boolean;
+  error: string | null;
   student: Student;
   balance: number;
   scans: ScanRecord[];
   payments: PaymentRecord[];
   settings: Settings;
-  /** Per day attendance map: { 'YYYY-MM-DD': { Breakfast?: scanId, ... } } */
   attendance: Record<string, Partial<Record<SessionMeal, string>>>;
-  /** Admin-forced active meal; null = auto from clock */
   activeMealOverride: SessionMeal | null;
-  /** Token salt; bumping it invalidates outstanding QR codes */
   tokenSalt: string;
 };
 
-const KEY = "mess-store-v3";
+// ----- Constants
+const LOCAL_KEY = "mess-local-v1"; // local-only state (payments, settings, qr admin)
 export const MEAL_PRICE = 50;
-
 export const MEAL_WINDOWS: Record<SessionMeal, { start: number; end: number }> = {
   Breakfast: { start: 7, end: 10 },
   Lunch: { start: 12, end: 15 },
   Dinner: { start: 19, end: 22 },
 };
-
-/** Token format: MESS|<meal>|<YYYY-MM-DD>|<expiryMs>|<salt> */
 export const TOKEN_TTL_MS = 30_000;
 
+// ----- Helpers
 export function todayKey(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-
 export function activeMealNow(): SessionMeal | null {
   const h = new Date().getHours();
   for (const m of ["Breakfast", "Lunch", "Dinner"] as SessionMeal[]) {
@@ -83,97 +83,83 @@ export function activeMealNow(): SessionMeal | null {
   }
   return null;
 }
-
 export function getActiveMeal(): SessionMeal | null {
-  loadOnce();
   return state.activeMealOverride ?? activeMealNow();
 }
-
 export function generateQrToken(meal?: SessionMeal | null): string | null {
-  loadOnce();
   const m = meal ?? getActiveMeal();
   if (!m) return null;
-  const expiry = Date.now() + TOKEN_TTL_MS;
-  return `MESS|${m}|${todayKey()}|${expiry}|${state.tokenSalt}`;
+  return `MESS|${m}|${todayKey()}|${Date.now() + TOKEN_TTL_MS}|${state.tokenSalt}`;
 }
-
 export type ValidationResult =
   | { ok: true; meal: SessionMeal }
   | { ok: false; reason: string };
-
 export function validateQr(qr: string): ValidationResult {
-  loadOnce();
   const parts = qr.split("|");
-  if (parts.length !== 5 || parts[0] !== "MESS") {
+  if (parts.length !== 5 || parts[0] !== "MESS")
     return { ok: false, reason: "Invalid QR" };
-  }
   const [, meal, day, expiryStr, salt] = parts;
-  if (!["Breakfast", "Lunch", "Dinner"].includes(meal)) {
+  if (!["Breakfast", "Lunch", "Dinner"].includes(meal))
     return { ok: false, reason: "Unknown meal token" };
-  }
   if (salt !== state.tokenSalt) return { ok: false, reason: "QR revoked" };
   if (day !== todayKey()) return { ok: false, reason: "QR expired (old day)" };
   const expiry = Number(expiryStr);
-  if (!Number.isFinite(expiry) || Date.now() > expiry) {
+  if (!Number.isFinite(expiry) || Date.now() > expiry)
     return { ok: false, reason: "QR expired" };
-  }
   const active = getActiveMeal();
   if (!active) return { ok: false, reason: "No active meal session" };
-  if (active !== meal) {
-    return { ok: false, reason: `Not ${meal} time` };
-  }
+  if (active !== meal) return { ok: false, reason: `Not ${meal} time` };
   const today = state.attendance[todayKey()] ?? {};
-  if (today[meal as SessionMeal]) {
-    return { ok: false, reason: "Already taken" };
-  }
+  if (today[meal as SessionMeal]) return { ok: false, reason: "Already taken" };
   return { ok: true, meal: meal as SessionMeal };
 }
+export function getMealForNow(): Meal {
+  const h = new Date().getHours();
+  if (h < 10) return "Breakfast";
+  if (h < 15) return "Lunch";
+  if (h < 18) return "Snacks";
+  return "Dinner";
+}
+function toDbMeal(m: Meal): SessionMeal {
+  if (m === "Snacks") return "Lunch";
+  return m;
+}
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
 
+// ----- Defaults
 const DEFAULT_STUDENT: Student = {
-  name: "Aarav Reddy",
-  initials: "AR",
-  rollNo: "21CSE1042",
+  name: "Student",
+  initials: "S",
+  rollNo: "—",
   hostel: "Sarayu Hostel",
   block: "C",
   room: "C-214",
   plan: "Veg Premium",
-  planEnds: "30 Nov 2026",
-  joined: "Aug 2024",
+  planEnds: "—",
+  joined: "—",
 };
-
-const DEFAULT_PAYMENTS: PaymentRecord[] = [
-  {
-    id: "p-001",
-    ts: Date.now() - 1000 * 60 * 60 * 24 * 10,
-    type: "recharge",
-    title: "November Plan",
-    amount: 3200,
-    status: "Paid",
-    method: "UPI · GPay",
-  },
-  {
-    id: "p-002",
-    ts: Date.now() - 1000 * 60 * 60 * 24 * 18,
-    type: "credit",
-    title: "Credit top-up",
-    amount: -500,
-    status: "Credit",
-  },
-];
-
 const DEFAULT_SETTINGS: Settings = {
   notifications: true,
   language: "English",
   weeklyReports: true,
   autoCredit: false,
 };
-
 const DEFAULT: Store = {
   hydrated: false,
+  loading: false,
+  error: null,
   student: DEFAULT_STUDENT,
-  balance: 2480,
+  balance: 0,
   scans: [],
-  payments: DEFAULT_PAYMENTS,
+  payments: [],
   settings: DEFAULT_SETTINGS,
   attendance: {},
   activeMealOverride: null,
@@ -182,35 +168,196 @@ const DEFAULT: Store = {
 
 let state: Store = DEFAULT;
 const listeners = new Set<() => void>();
+const emit = () => listeners.forEach((l) => l());
+function setState(patch: Partial<Store>) {
+  state = { ...state, ...patch };
+  persistLocal();
+  emit();
+}
 
-function emit() {
-  listeners.forEach((l) => l());
-}
-function persist() {
+// ----- Local persistence (payments, settings, QR admin only)
+type LocalSlice = Pick<
+  Store,
+  "payments" | "settings" | "activeMealOverride" | "tokenSalt"
+>;
+function persistLocal() {
   if (typeof window === "undefined") return;
-  const { hydrated, ...rest } = state;
-  void hydrated;
-  localStorage.setItem(KEY, JSON.stringify(rest));
+  const slice: LocalSlice = {
+    payments: state.payments,
+    settings: state.settings,
+    activeMealOverride: state.activeMealOverride,
+    tokenSalt: state.tokenSalt,
+  };
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(slice));
 }
-function loadOnce() {
-  if (state.hydrated || typeof window === "undefined") return;
+function loadLocal() {
+  if (typeof window === "undefined") return;
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(LOCAL_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<Store>;
+      const parsed = JSON.parse(raw) as Partial<LocalSlice>;
       state = {
-        ...DEFAULT,
-        ...parsed,
-        student: { ...DEFAULT_STUDENT, ...(parsed.student ?? {}) },
+        ...state,
+        payments: parsed.payments ?? [],
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
-        hydrated: true,
+        activeMealOverride: parsed.activeMealOverride ?? null,
+        tokenSalt: parsed.tokenSalt ?? `s-${Date.now()}`,
       };
-    } else {
-      state = { ...DEFAULT, hydrated: true };
     }
   } catch {
-    state = { ...DEFAULT, hydrated: true };
+    /* ignore */
   }
+}
+
+// ----- Backend sync
+type DbAttendance = {
+  id: string;
+  meal_type: SessionMeal;
+  status: "approved" | "credit" | "invalid";
+  amount: number;
+  balance_after: number | null;
+  reason: string | null;
+  scanned_at: string;
+};
+
+function rowToScan(r: DbAttendance): ScanRecord {
+  return {
+    id: r.id,
+    ts: new Date(r.scanned_at).getTime(),
+    meal: r.meal_type,
+    state: r.status === "invalid" ? "pending" : (r.status as ScanState),
+    amount: Number(r.amount ?? 0),
+    balanceAfter: Number(r.balance_after ?? 0),
+    qr: "",
+    reason: r.reason ?? undefined,
+  };
+}
+
+function rebuildAttendance(scans: ScanRecord[]) {
+  const map: Record<string, Partial<Record<SessionMeal, string>>> = {};
+  for (const s of scans) {
+    if (s.state === "pending") continue;
+    if (!["Breakfast", "Lunch", "Dinner"].includes(s.meal)) continue;
+    const day = todayKey(new Date(s.ts));
+    if (!map[day]) map[day] = {};
+    if (!map[day][s.meal as SessionMeal]) map[day][s.meal as SessionMeal] = s.id;
+  }
+  return map;
+}
+
+let currentUserId: string | null = null;
+let attendanceChannel: ReturnType<typeof supabase.channel> | null = null;
+let profileChannel: ReturnType<typeof supabase.channel> | null = null;
+
+async function loadProfile(userId: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return;
+  const student: Student = {
+    name: data.name,
+    initials: initials(data.name),
+    rollNo: data.roll_number ?? "—",
+    hostel: data.hostel,
+    block: data.block,
+    room: data.room,
+    plan: (data.meal_plan as Student["plan"]) ?? "Veg Premium",
+    planEnds: data.plan_ends
+      ? new Date(data.plan_ends).toLocaleDateString(undefined, {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : "—",
+    joined: data.created_at
+      ? new Date(data.created_at).toLocaleDateString(undefined, {
+          month: "short",
+          year: "numeric",
+        })
+      : "—",
+  };
+  setState({ student, balance: Number(data.balance ?? 0) });
+}
+
+async function loadAttendance(userId: string) {
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("id, meal_type, status, amount, balance_after, reason, scanned_at")
+    .eq("student_id", userId)
+    .order("scanned_at", { ascending: false })
+    .limit(60);
+  if (error) throw error;
+  const scans = (data ?? []).map((r) => rowToScan(r as DbAttendance));
+  setState({ scans, attendance: rebuildAttendance(scans) });
+}
+
+export async function syncForUser(userId: string | null) {
+  // unsubscribe previous
+  if (attendanceChannel) {
+    await supabase.removeChannel(attendanceChannel);
+    attendanceChannel = null;
+  }
+  if (profileChannel) {
+    await supabase.removeChannel(profileChannel);
+    profileChannel = null;
+  }
+  currentUserId = userId;
+  if (!userId) {
+    setState({
+      student: DEFAULT_STUDENT,
+      balance: 0,
+      scans: [],
+      attendance: {},
+      hydrated: true,
+      loading: false,
+      error: null,
+    });
+    return;
+  }
+  setState({ loading: true, error: null });
+  try {
+    await Promise.all([loadProfile(userId), loadAttendance(userId)]);
+    setState({ hydrated: true, loading: false });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to load data";
+    setState({ hydrated: true, loading: false, error: msg });
+  }
+
+  // realtime
+  profileChannel = supabase
+    .channel(`profile-${userId}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+      () => void loadProfile(userId).catch(() => undefined),
+    )
+    .subscribe();
+
+  attendanceChannel = supabase
+    .channel(`attendance-${userId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "attendance",
+        filter: `student_id=eq.${userId}`,
+      },
+      () => void loadAttendance(userId).catch(() => undefined),
+    )
+    .subscribe();
+}
+
+let initOnce = false;
+function ensureInit() {
+  if (initOnce || typeof window === "undefined") return;
+  initOnce = true;
+  loadLocal();
+  state = { ...state, hydrated: true };
+  emit();
 }
 
 export function useMessStore() {
@@ -220,58 +367,71 @@ export function useMessStore() {
       return () => listeners.delete(cb);
     },
     () => state,
-    () => DEFAULT,
+    () => state,
   );
-  const [, setReady] = useState(false);
+  const [, force] = useState(0);
   useEffect(() => {
-    if (!state.hydrated) {
-      loadOnce();
-      setReady(true);
-      emit();
-    }
+    ensureInit();
+    force((n) => n + 1);
   }, []);
   return snap;
 }
 
-export function getMealForNow(): Meal {
-  const h = new Date().getHours();
-  if (h < 10) return "Breakfast";
-  if (h < 15) return "Lunch";
-  if (h < 18) return "Snacks";
-  return "Dinner";
-}
-
+// ----- Mutations
 export function previewState(): ScanState {
-  loadOnce();
   if (state.balance >= MEAL_PRICE) return "approved";
   if (state.balance < 0) return "credit";
   return "pending";
 }
 
-export function commitInvalid(qr: string, reason: string): ScanRecord {
-  loadOnce();
-  const record: ScanRecord = {
+export async function commitInvalid(qr: string, reason: string): Promise<ScanRecord> {
+  const userId = currentUserId ?? getCurrentUser()?.id;
+  const meal = toDbMeal(getMealForNow());
+  if (userId) {
+    try {
+      const { data } = await supabase
+        .from("attendance")
+        .insert({
+          student_id: userId,
+          meal_type: meal,
+          status: "invalid",
+          amount: 0,
+          balance_after: state.balance,
+          reason,
+        })
+        .select("id, meal_type, status, amount, balance_after, reason, scanned_at")
+        .single();
+      if (data) {
+        const rec = rowToScan(data as DbAttendance);
+        rec.qr = qr;
+        return rec;
+      }
+    } catch {
+      /* fallthrough to local */
+    }
+  }
+  const fallback: ScanRecord = {
     id: crypto.randomUUID(),
     ts: Date.now(),
-    meal: getMealForNow(),
+    meal,
     state: "pending",
     amount: 0,
     balanceAfter: state.balance,
     qr,
     reason,
   };
-  state = { ...state, scans: [record, ...state.scans].slice(0, 60) };
-  persist();
-  emit();
-  return record;
+  return fallback;
 }
 
-export function commitScan(qr: string, accepted = true, sessionMeal?: SessionMeal): ScanRecord {
-  loadOnce();
-  const meal: Meal = sessionMeal ?? getMealForNow();
+export async function commitScan(
+  qr: string,
+  accepted = true,
+  sessionMeal?: SessionMeal,
+): Promise<ScanRecord> {
+  const userId = currentUserId ?? getCurrentUser()?.id;
+  const meal: SessionMeal = sessionMeal ?? toDbMeal(getMealForNow());
   let scanState: ScanState;
   let amount = 0;
-
   if (state.balance >= MEAL_PRICE) {
     scanState = "approved";
     amount = MEAL_PRICE;
@@ -282,79 +442,86 @@ export function commitScan(qr: string, accepted = true, sessionMeal?: SessionMea
     scanState = "pending";
     amount = 0;
   }
-
   const balanceAfter = state.balance - amount;
-  const record: ScanRecord = {
-    id: crypto.randomUUID(),
-    ts: Date.now(),
-    meal,
-    state: scanState,
-    amount,
-    balanceAfter,
-    qr,
-  };
 
-  state = {
-    ...state,
-    balance: balanceAfter,
-    scans: [record, ...state.scans].slice(0, 60),
-  };
-
-  // Mark attendance for today's meal session if approved/credit
-  if ((scanState === "approved" || scanState === "credit") && sessionMeal) {
-    const day = todayKey();
-    state = {
-      ...state,
-      attendance: {
-        ...state.attendance,
-        [day]: { ...(state.attendance[day] ?? {}), [sessionMeal]: record.id },
-      },
+  if (!userId) {
+    return {
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+      meal,
+      state: scanState,
+      amount,
+      balanceAfter,
+      qr,
     };
   }
 
-  // Mirror credit usage as a payment log entry
-  if (scanState === "credit") {
-    state.payments = [
-      {
-        id: crypto.randomUUID(),
-        ts: record.ts,
-        type: "credit" as PaymentType,
-        title: `${meal} on credit`,
-        amount: -amount,
-        status: "Credit" as const,
-      },
-      ...state.payments,
-    ].slice(0, 60);
+  if (scanState === "pending") {
+    // declined — do not insert attendance; just return local record
+    return {
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+      meal,
+      state: "pending",
+      amount: 0,
+      balanceAfter: state.balance,
+      qr,
+    };
   }
 
-  persist();
-  emit();
-  return record;
+  const { data: ins, error: insErr } = await supabase
+    .from("attendance")
+    .insert({
+      student_id: userId,
+      meal_type: meal,
+      status: scanState,
+      amount,
+      balance_after: balanceAfter,
+    })
+    .select("id, meal_type, status, amount, balance_after, reason, scanned_at")
+    .single();
+  if (insErr) throw new Error(insErr.message);
+
+  // update balance
+  const { error: upErr } = await supabase
+    .from("profiles")
+    .update({ balance: balanceAfter })
+    .eq("id", userId);
+  if (upErr) throw new Error(upErr.message);
+
+  // log credit as a payment (local)
+  if (scanState === "credit") {
+    setState({
+      payments: [
+        {
+          id: crypto.randomUUID(),
+          ts: Date.now(),
+          type: "credit",
+          title: `${meal} on credit`,
+          amount: -amount,
+          status: "Credit",
+        },
+        ...state.payments,
+      ].slice(0, 60),
+    });
+  }
+
+  const rec = rowToScan(ins as DbAttendance);
+  rec.qr = qr;
+  return rec;
 }
 
 export function resetAttendance() {
-  loadOnce();
-  state = { ...state, attendance: {}, tokenSalt: `s-${Date.now()}` };
-  persist();
-  emit();
+  setState({ tokenSalt: `s-${Date.now()}` });
 }
-
 export function regenerateSalt() {
-  loadOnce();
-  state = { ...state, tokenSalt: `s-${Date.now()}` };
-  persist();
-  emit();
+  setState({ tokenSalt: `s-${Date.now()}` });
 }
-
 export function setActiveMealOverride(meal: SessionMeal | null) {
-  loadOnce();
-  state = { ...state, activeMealOverride: meal };
-  persist();
-  emit();
+  setState({ activeMealOverride: meal });
 }
-
-export function addPayment(amount: number, method = "UPI · GPay"): PaymentRecord {
-  loadOnce();
+export async function addPayment(amount: number, method = "UPI · GPay"): Promise<PaymentRecord> {
+  const userId = currentUserId ?? getCurrentUser()?.id;
   const rec: PaymentRecord = {
     id: crypto.randomUUID(),
     ts: Date.now(),
@@ -364,27 +531,25 @@ export function addPayment(amount: number, method = "UPI · GPay"): PaymentRecor
     status: "Paid",
     method,
   };
-  state = {
-    ...state,
-    balance: state.balance + amount,
-    payments: [rec, ...state.payments].slice(0, 60),
-  };
-  persist();
-  emit();
+  if (userId) {
+    const newBalance = state.balance + amount;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ balance: newBalance })
+      .eq("id", userId);
+    if (error) throw new Error(error.message);
+  }
+  setState({ payments: [rec, ...state.payments].slice(0, 60) });
   return rec;
 }
-
 export function updateSettings(patch: Partial<Settings>) {
-  loadOnce();
-  state = { ...state, settings: { ...state.settings, ...patch } };
-  persist();
-  emit();
+  setState({ settings: { ...state.settings, ...patch } });
 }
-
 export function resetStore() {
-  state = { ...DEFAULT, hydrated: true };
-  persist();
+  state = { ...DEFAULT, hydrated: true, settings: DEFAULT_SETTINGS };
+  persistLocal();
   emit();
+  if (currentUserId) void syncForUser(currentUserId);
 }
 
 export type Stats = {
@@ -396,16 +561,13 @@ export type Stats = {
   spent: number;
   creditUsed: number;
 };
-
 export function computeStats(scans: ScanRecord[]): Stats {
   const totalScans = scans.length;
   const approved = scans.filter((s) => s.state === "approved").length;
   const credit = scans.filter((s) => s.state === "credit").length;
   const declined = scans.filter((s) => s.state === "pending").length;
   const attended = approved + credit;
-  const attendancePct = totalScans
-    ? Math.round((attended / totalScans) * 100)
-    : 0;
+  const attendancePct = totalScans ? Math.round((attended / totalScans) * 100) : 0;
   const spent = scans
     .filter((s) => s.state === "approved")
     .reduce((sum, s) => sum + s.amount, 0);
