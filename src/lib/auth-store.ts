@@ -17,11 +17,13 @@ type State = {
   loading: boolean;
 };
 
+type Metadata = Record<string, unknown> | null | undefined;
+
 const STUDENT_DOMAIN = "messmate.local";
 const rollToEmail = (roll: string) =>
   `${roll.trim().toLowerCase()}@${STUDENT_DOMAIN}`;
 
-// Demo accounts: auto-provisioned on first login attempt
+// Demo accounts: auto-provisioned on first login attempt when email auto-confirm is enabled.
 const DEMOS = [
   {
     match: (email: string, pw: string) =>
@@ -55,29 +57,52 @@ function setState(patch: Partial<State>) {
   emit();
 }
 
+function readString(metadata: Metadata, key: string): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function readRole(metadata: Metadata): Role | undefined {
+  const value = readString(metadata, "role");
+  return value === "admin" || value === "student" ? value : undefined;
+}
+
 async function loadRoleAndProfile(
   userId: string,
   email: string | undefined,
+  metadata?: Metadata,
 ): Promise<AuthUser> {
-  const [{ data: roleRow }, { data: profile }] = await Promise.all([
-    supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    supabase
-      .from("profiles")
-      .select("name, roll_number")
-      .eq("id", userId)
-      .maybeSingle(),
-  ]);
-  const role: Role = (roleRow?.role as Role) ?? "student";
+  const [{ data: roleRow, error: roleError }, { data: profile, error: profileError }] =
+    await Promise.all([
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("name, roll_number")
+        .eq("id", userId)
+        .maybeSingle(),
+    ]);
+
+  if (roleError) console.warn("role load failed", roleError.message);
+  if (profileError) console.warn("profile load failed", profileError.message);
+
+  const role: Role = (roleRow?.role as Role | undefined) ?? readRole(metadata) ?? "student";
+  const name =
+    profile?.name ??
+    readString(metadata, "name") ??
+    email?.split("@")[0] ??
+    (role === "admin" ? "Mess Admin" : "Student");
+
   return {
     id: userId,
     role,
-    name: profile?.name ?? email?.split("@")[0] ?? "Student",
-    rollNo: profile?.roll_number ?? undefined,
+    name,
+    rollNo: profile?.roll_number ?? readString(metadata, "roll_number"),
     email,
+    phone: readString(metadata, "phone"),
   };
 }
 
@@ -86,19 +111,24 @@ async function initOnce() {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
     if (!session?.user) {
-      setState({ user: null, hydrated: true });
+      setState({ user: null, hydrated: true, loading: false });
       return;
     }
-    // defer profile fetch to avoid deadlock inside callback
+
+    // Defer profile fetch to avoid a Supabase auth callback deadlock.
     setTimeout(async () => {
       try {
-        const u = await loadRoleAndProfile(session.user.id, session.user.email);
-        setState({ user: u, hydrated: true });
+        const u = await loadRoleAndProfile(
+          session.user.id,
+          session.user.email,
+          session.user.user_metadata,
+        );
+        setState({ user: u, hydrated: true, loading: false });
       } catch (err) {
         console.error("auth profile load failed", err);
-        setState({ hydrated: true });
+        setState({ hydrated: true, loading: false });
       }
     }, 0);
   });
@@ -109,14 +139,17 @@ async function initOnce() {
       const u = await loadRoleAndProfile(
         data.session.user.id,
         data.session.user.email,
+        data.session.user.user_metadata,
       );
-      setState({ user: u, hydrated: true });
+      setState({ user: u, hydrated: true, loading: false });
     } catch {
-      setState({ hydrated: true });
+      setState({ hydrated: true, loading: false });
     }
   } else {
-    setState({ hydrated: true });
+    setState({ hydrated: true, loading: false });
   }
+
+  return () => subscription.subscription.unsubscribe();
 }
 
 export function useAuthStore() {
@@ -148,60 +181,75 @@ async function ensureDemoSeeded(email: string, password: string) {
     password: demo.password,
     options: { data: demo.metadata },
   });
-  if (error && !/already|registered/i.test(error.message)) throw error;
+  if (error && !/already|registered|exists/i.test(error.message)) throw error;
   return true;
+}
+
+function isInvalidLogin(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /invalid login|invalid credentials/i.test(msg);
 }
 
 export async function loginStudent(rollNo: string, password: string): Promise<AuthUser> {
   const email = rollToEmail(rollNo);
+  setState({ loading: true });
   try {
-    await trySignIn(email, password);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/invalid login/i.test(msg)) {
-      const seeded = await ensureDemoSeeded(email, password);
-      if (seeded) {
-        await trySignIn(email, password);
+    try {
+      await trySignIn(email, password);
+    } catch (err) {
+      if (isInvalidLogin(err)) {
+        const seeded = await ensureDemoSeeded(email, password);
+        if (seeded) {
+          await trySignIn(email, password);
+        } else {
+          throw new Error("Invalid registration number or password");
+        }
       } else {
-        throw new Error("Invalid registration number or password");
+        throw err;
       }
-    } else {
-      throw err;
     }
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) throw new Error("Login failed");
+    const u = await loadRoleAndProfile(data.user.id, data.user.email, data.user.user_metadata);
+    setState({ user: u, loading: false, hydrated: true });
+    return u;
+  } catch (err) {
+    setState({ loading: false });
+    throw err;
   }
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error("Login failed");
-  const u = await loadRoleAndProfile(data.user.id, data.user.email);
-  setState({ user: u });
-  return u;
 }
 
 export async function loginAdmin(email: string, password: string): Promise<AuthUser> {
   const e = email.trim().toLowerCase();
+  setState({ loading: true });
   try {
-    await trySignIn(e, password);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/invalid login/i.test(msg)) {
-      const seeded = await ensureDemoSeeded(e, password);
-      if (seeded) {
-        await trySignIn(e, password);
+    try {
+      await trySignIn(e, password);
+    } catch (err) {
+      if (isInvalidLogin(err)) {
+        const seeded = await ensureDemoSeeded(e, password);
+        if (seeded) {
+          await trySignIn(e, password);
+        } else {
+          throw new Error("Invalid email or password");
+        }
       } else {
-        throw new Error("Invalid email or password");
+        throw err;
       }
-    } else {
-      throw err;
     }
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) throw new Error("Login failed");
+    const u = await loadRoleAndProfile(data.user.id, data.user.email, data.user.user_metadata);
+    if (u.role !== "admin") {
+      await supabase.auth.signOut();
+      throw new Error("This account does not have admin access");
+    }
+    setState({ user: u, loading: false, hydrated: true });
+    return u;
+  } catch (err) {
+    setState({ loading: false });
+    throw err;
   }
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error("Login failed");
-  const u = await loadRoleAndProfile(data.user.id, data.user.email);
-  if (u.role !== "admin") {
-    await supabase.auth.signOut();
-    throw new Error("This account does not have admin access");
-  }
-  setState({ user: u });
-  return u;
 }
 
 export async function signupStudent(input: {
@@ -211,24 +259,32 @@ export async function signupStudent(input: {
   password: string;
 }): Promise<AuthUser> {
   const email = rollToEmail(input.rollNo);
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password: input.password,
-    options: {
-      data: {
-        name: input.name.trim(),
-        roll_number: input.rollNo.trim(),
-        phone: input.phone.replace(/\D/g, ""),
-        role: "student",
-      },
-    },
-  });
-  if (error) throw new Error(error.message);
-  if (!data.user) throw new Error("Signup failed");
-  // session may already exist if email auto-confirm is on
-  const u = await loadRoleAndProfile(data.user.id, email);
-  setState({ user: u });
-  return u;
+  const metadata = {
+    name: input.name.trim(),
+    roll_number: input.rollNo.trim(),
+    phone: input.phone.replace(/\D/g, ""),
+    role: "student",
+  };
+  setState({ loading: true });
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: input.password,
+      options: { data: metadata },
+    });
+    if (error) throw new Error(error.message);
+    if (!data.user) throw new Error("Signup failed");
+
+    const u = await loadRoleAndProfile(data.user.id, email, data.user.user_metadata ?? metadata);
+    setState({ user: data.session ? u : null, loading: false, hydrated: true });
+    if (!data.session) {
+      throw new Error("Account created. Confirm your email, then sign in.");
+    }
+    return u;
+  } catch (err) {
+    setState({ loading: false });
+    throw err;
+  }
 }
 
 export function requestOtp(_phone: string): string {
@@ -243,7 +299,7 @@ export async function resetPassword(_rollNo: string, _newPassword: string) {
 
 export async function logout() {
   await supabase.auth.signOut();
-  setState({ user: null });
+  setState({ user: null, loading: false });
 }
 
 export function getCurrentUser(): AuthUser | null {
