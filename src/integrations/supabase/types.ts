@@ -50,6 +50,39 @@ export type Database = {
         }
         Relationships: []
       }
+      payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          method: string | null
+          payment_type: Database["public"]["Enums"]["payment_type"]
+          status: Database["public"]["Enums"]["payment_status"]
+          student_id: string
+          title: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          payment_type?: Database["public"]["Enums"]["payment_type"]
+          status?: Database["public"]["Enums"]["payment_status"]
+          student_id: string
+          title?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          method?: string | null
+          payment_type?: Database["public"]["Enums"]["payment_type"]
+          status?: Database["public"]["Enums"]["payment_status"]
+          student_id?: string
+          title?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           balance: number
@@ -130,6 +163,8 @@ export type Database = {
       app_role: "admin" | "student"
       attendance_status: "approved" | "credit" | "invalid"
       meal_type: "Breakfast" | "Lunch" | "Dinner"
+      payment_status: "Paid" | "Credit" | "Pending"
+      payment_type: "recharge" | "credit" | "due"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -260,6 +295,8 @@ export const Constants = {
       app_role: ["admin", "student"],
       attendance_status: ["approved", "credit", "invalid"],
       meal_type: ["Breakfast", "Lunch", "Dinner"],
+      payment_status: ["Paid", "Credit", "Pending"],
+      payment_type: ["recharge", "credit", "due"],
     },
   },
 } as const
