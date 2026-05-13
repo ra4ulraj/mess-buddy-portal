@@ -1,0 +1,12 @@
+# MessMate
+
+> MessMate is a mobile-first hostel mess portal for students and admins — scan QR codes for meals, track attendance, recharge wallets, and manage payments.
+
+## Pages
+
+- [Dashboard](/): Student home with wallet balance, QR scanner, attendance and payment history.
+- [Profile](/profile): Student details, hostel info, mess plan, and QR scan statistics.
+- [Settings](/settings): Theme, notifications, language, and app preferences.
+- [Sign in](/login): Student and admin login.
+- [Create account](/signup): New student registration.
+- [Reset password](/forgot-password): Recover access using your registration number.
