@@ -369,7 +369,6 @@ let initOnce = false;
 function ensureInit() {
   if (initOnce || typeof window === "undefined") return;
   initOnce = true;
-  loadLocal();
   state = { ...state, hydrated: true };
   emit();
 }
@@ -570,7 +569,6 @@ export function updateSettings(patch: Partial<Settings>) {
 }
 export function resetStore() {
   state = { ...DEFAULT, hydrated: true, settings: DEFAULT_SETTINGS };
-  persistLocal();
   emit();
   if (currentUserId) void syncForUser(currentUserId);
 }
