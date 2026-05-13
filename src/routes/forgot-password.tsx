@@ -13,9 +13,21 @@ import { resetPassword } from "@/lib/auth-store";
 export const Route = createFileRoute("/forgot-password")({
   head: () => ({
     meta: [
-      { title: "Reset password — MessMate" },
-      { name: "description", content: "Reset your mess portal password." },
+      { title: "Reset password — MessMate Hostel Mess Portal" },
+      {
+        name: "description",
+        content:
+          "Forgot your MessMate password? Reset it securely using your student registration number and get back to scanning meals and managing your hostel mess account.",
+      },
+      { property: "og:title", content: "Reset password — MessMate" },
+      {
+        property: "og:description",
+        content:
+          "Securely reset your MessMate hostel mess portal password using your registration number.",
+      },
+      { property: "og:url", content: "/forgot-password" },
     ],
+    links: [{ rel: "canonical", href: "/forgot-password" }],
   }),
   component: ForgotPage,
 });
