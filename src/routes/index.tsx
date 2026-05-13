@@ -10,13 +10,21 @@ import { PaymentHistory } from "@/components/mess/payment-history";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Mess Portal — Hostel Student Dashboard" },
+      { title: "Dashboard — MessMate Hostel Mess Portal" },
       {
         name: "description",
         content:
-          "Scan, pay, and track your hostel mess attendance and balance from one beautiful mobile-first portal.",
+          "Scan QR for breakfast, lunch and dinner, track your mess attendance, view payment history, and recharge your wallet — all from your MessMate student dashboard.",
       },
+      { property: "og:title", content: "Dashboard — MessMate" },
+      {
+        property: "og:description",
+        content:
+          "Scan QR for meals, track hostel mess attendance, view payment history, and recharge your wallet from one mobile-first dashboard.",
+      },
+      { property: "og:url", content: "/" },
     ],
+    links: [{ rel: "canonical", href: "/" }],
   }),
   component: MessPortal,
 });

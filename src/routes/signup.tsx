@@ -14,9 +14,21 @@ import { signupStudent } from "@/lib/auth-store";
 export const Route = createFileRoute("/signup")({
   head: () => ({
     meta: [
-      { title: "Create account — MessMate" },
-      { name: "description", content: "Sign up for the hostel mess portal." },
+      { title: "Create account — MessMate Hostel Mess Portal" },
+      {
+        name: "description",
+        content:
+          "Create your MessMate student account in under a minute to scan meal QR codes, track hostel mess attendance, recharge your wallet and pay dues from your phone.",
+      },
+      { property: "og:title", content: "Create account — MessMate" },
+      {
+        property: "og:description",
+        content:
+          "Sign up for MessMate — the modern hostel mess portal for students. Scan QR for meals, track attendance and manage payments.",
+      },
+      { property: "og:url", content: "/signup" },
     ],
+    links: [{ rel: "canonical", href: "/signup" }],
   }),
   component: SignupPage,
 });

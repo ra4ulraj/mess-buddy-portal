@@ -75,14 +75,28 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "MessMate — Hostel Mess Portal" },
+      {
+        name: "description",
+        content:
+          "MessMate is the modern hostel mess portal for students and admins — scan QR for meals, track attendance, recharge your wallet, and manage payments in one place.",
+      },
+      { name: "author", content: "MessMate" },
+      { property: "og:site_name", content: "MessMate" },
+      { property: "og:title", content: "MessMate — Hostel Mess Portal" },
+      {
+        property: "og:description",
+        content:
+          "Scan QR for meals, track attendance, recharge your wallet, and manage hostel mess payments from a single mobile-first portal.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "MessMate — Hostel Mess Portal" },
+      {
+        name: "twitter:description",
+        content:
+          "Scan QR for meals, track attendance, and manage hostel mess payments — all in one mobile-first portal.",
+      },
     ],
     links: [
       {

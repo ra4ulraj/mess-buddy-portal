@@ -20,9 +20,21 @@ import {
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Sign in — MessMate" },
-      { name: "description", content: "Login to your hostel mess portal." },
+      { title: "Sign in — MessMate Hostel Mess Portal" },
+      {
+        name: "description",
+        content:
+          "Sign in to MessMate to scan QR for meals, check your wallet balance, track attendance and manage hostel mess payments. Student and admin login supported.",
+      },
+      { property: "og:title", content: "Sign in — MessMate" },
+      {
+        property: "og:description",
+        content:
+          "Log in to your MessMate hostel mess portal — scan meal QR codes, track attendance, and manage payments.",
+      },
+      { property: "og:url", content: "/login" },
     ],
+    links: [{ rel: "canonical", href: "/login" }],
   }),
   component: LoginPage,
 });
