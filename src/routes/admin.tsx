@@ -32,9 +32,22 @@ import {
 export const Route = createFileRoute("/admin")({
   head: () => ({
     meta: [
-      { title: "Admin · Mess analytics" },
-      { name: "description", content: "Live hostel mess QR, attendance, dues, and payment analytics." },
+      { title: "Admin Panel — MessMate Hostel Mess Analytics" },
+      {
+        name: "description",
+        content:
+          "MessMate admin control panel — monitor live QR meal sessions, attendance counts, pending dues, revenue collected, and manage active meal windows for your hostel.",
+      },
+      { property: "og:title", content: "Admin Panel — MessMate" },
+      {
+        property: "og:description",
+        content:
+          "Real-time hostel mess analytics: meals served, active students, pending dues and revenue — plus QR session controls for admins.",
+      },
+      { property: "og:url", content: "/admin" },
+      { name: "robots", content: "noindex, nofollow" },
     ],
+    links: [{ rel: "canonical", href: "/admin" }],
   }),
   component: AdminPage,
 });
