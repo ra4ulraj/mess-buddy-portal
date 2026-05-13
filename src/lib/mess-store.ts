@@ -61,7 +61,6 @@ type Store = {
   tokenSalt: string;
 };
 
-const LOCAL_KEY = "mess-local-v2";
 export const MEAL_PRICE = 50;
 export const MEAL_WINDOWS: Record<SessionMeal, { start: number; end: number }> = {
   Breakfast: { start: 7, end: 10 },
@@ -168,36 +167,7 @@ const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 function setState(patch: Partial<Store>) {
   state = { ...state, ...patch };
-  persistLocal();
   emit();
-}
-
-type LocalSlice = Pick<Store, "settings" | "activeMealOverride" | "tokenSalt">;
-function persistLocal() {
-  if (typeof window === "undefined") return;
-  const slice: LocalSlice = {
-    settings: state.settings,
-    activeMealOverride: state.activeMealOverride,
-    tokenSalt: state.tokenSalt,
-  };
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(slice));
-}
-function loadLocal() {
-  if (typeof window === "undefined") return;
-  try {
-    const raw = localStorage.getItem(LOCAL_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<LocalSlice>;
-      state = {
-        ...state,
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
-        activeMealOverride: parsed.activeMealOverride ?? null,
-        tokenSalt: parsed.tokenSalt ?? `s-${Date.now()}`,
-      };
-    }
-  } catch {
-    /* ignore */
-  }
 }
 
 type DbAttendance = {
