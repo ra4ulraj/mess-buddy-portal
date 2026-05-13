@@ -125,6 +125,33 @@ export type Database = {
         }
         Relationships: []
       }
+      qr_sessions: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          issued_by: string | null
+          meal_type: Database["public"]["Enums"]["meal_type"]
+          qr_token: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          issued_by?: string | null
+          meal_type: Database["public"]["Enums"]["meal_type"]
+          qr_token: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          issued_by?: string | null
+          meal_type?: Database["public"]["Enums"]["meal_type"]
+          qr_token?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
