@@ -19,9 +19,21 @@ import { SkeletonCard } from "@/components/mess/skeleton-card";
 export const Route = createFileRoute("/profile")({
   head: () => ({
     meta: [
-      { title: "Profile — Mess Portal" },
-      { name: "description", content: "Your hostel mess account, plan and stats." },
+      { title: "Profile — MessMate Hostel Mess Portal" },
+      {
+        name: "description",
+        content:
+          "View your hostel mess profile — student details, room and block, current meal plan, wallet balance, attendance percentage and lifetime QR scan statistics.",
+      },
+      { property: "og:title", content: "Profile — MessMate" },
+      {
+        property: "og:description",
+        content:
+          "Your MessMate profile: hostel and room info, active mess plan, wallet balance, attendance and QR scan history.",
+      },
+      { property: "og:url", content: "/profile" },
     ],
+    links: [{ rel: "canonical", href: "/profile" }],
   }),
   component: ProfilePage,
 });
