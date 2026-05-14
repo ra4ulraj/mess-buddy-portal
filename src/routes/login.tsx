@@ -98,22 +98,7 @@ function LoginPage() {
       {tab === "student" && <StudentForm />}
       {tab === "phone" && <PhoneForm />}
       {tab === "admin" && <AdminForm />}
-
-      <DemoHint tab={tab} />
     </AuthShell>
-  );
-}
-
-function DemoHint({ tab }: { tab: Tab }) {
-  return (
-    <div className="mt-6 rounded-2xl border border-dashed border-border bg-card/60 p-3 text-[11px] text-muted-foreground">
-      <p className="font-semibold text-foreground">Demo accounts</p>
-      {tab === "admin" ? (
-        <p className="mt-1">Email: admin@messmate.com · Pass: admin@123</p>
-      ) : (
-        <p className="mt-1">Reg: 25104131033 · Pass: Rahulraj@</p>
-      )}
-    </div>
   );
 }
 
