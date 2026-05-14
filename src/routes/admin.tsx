@@ -18,8 +18,8 @@ import { TopBar } from "@/components/mess/top-bar";
 import { SectionCard } from "@/components/mess/section-card";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  generateQrToken,
   getActiveMeal,
+  publishQrSession,
   MEAL_WINDOWS,
   regenerateSalt,
   resetAttendance,
@@ -80,7 +80,34 @@ function AdminPage() {
   const store = useMessStore();
   const analytics = useAdminAnalytics();
   const active = getActiveMeal();
-  const token = generateQrToken(active);
+  const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
+  const token = session?.token ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    if (!active) {
+      setSession(null);
+      return;
+    }
+    if (session && session.expiresAt - Date.now() > 1000) return;
+    publishQrSession(active)
+      .then((s) => {
+        if (!cancelled) setSession(s);
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : "Could not publish QR"));
+    const id = setInterval(() => {
+      if (session && session.expiresAt - Date.now() <= 0) {
+        publishQrSession(active)
+          .then((s) => {
+            if (!cancelled) setSession(s);
+          })
+          .catch(() => undefined);
+      }
+    }, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [active, session?.expiresAt]);
   const day = todayKey();
   const takenCount = analytics.data.todayAttendance;
 
@@ -211,8 +238,14 @@ function AdminPage() {
               <h2 className="text-sm font-semibold text-foreground">Live QR</h2>
               <button
                 onClick={() => {
-                  regenerateSalt();
-                  toast.success("New QR generated", { description: "Old tokens are now invalid." });
+                  publishQrSession(active)
+                    .then((s) => {
+                      setSession(s);
+                      toast.success("New QR generated", { description: "Fresh token issued." });
+                    })
+                    .catch((err) =>
+                      toast.error(err instanceof Error ? err.message : "Could not publish QR"),
+                    );
                 }}
                 className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-[11px] font-semibold text-foreground transition active:scale-[0.97]"
               >
