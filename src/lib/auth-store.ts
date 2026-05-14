@@ -23,31 +23,6 @@ const STUDENT_DOMAIN = "messmate.local";
 const rollToEmail = (roll: string) =>
   `${roll.trim().toLowerCase()}@${STUDENT_DOMAIN}`;
 
-// Demo accounts: auto-provisioned on first login attempt when email auto-confirm is enabled.
-const DEMOS = [
-  {
-    match: (email: string, pw: string) =>
-      email === rollToEmail("25104131033") && pw === "Rahulraj@",
-    email: rollToEmail("25104131033"),
-    password: "Rahulraj@",
-    metadata: {
-      name: "Rahul Raj",
-      roll_number: "25104131033",
-      role: "student",
-      balance: "2480",
-      hostel: "Sarayu Hostel",
-      meal_plan: "Veg Premium",
-    },
-  },
-  {
-    match: (email: string, pw: string) =>
-      email === "admin@messmate.com" && pw === "admin@123",
-    email: "admin@messmate.com",
-    password: "admin@123",
-    metadata: { name: "Mess Admin", role: "admin" },
-  },
-];
-
 let state: State = { hydrated: false, user: null, loading: false };
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
@@ -173,23 +148,6 @@ async function trySignIn(email: string, password: string) {
   if (error) throw error;
 }
 
-async function ensureDemoSeeded(email: string, password: string) {
-  const demo = DEMOS.find((d) => d.match(email, password));
-  if (!demo) return false;
-  const { error } = await supabase.auth.signUp({
-    email: demo.email,
-    password: demo.password,
-    options: { data: demo.metadata },
-  });
-  if (error && !/already|registered|exists/i.test(error.message)) throw error;
-  return true;
-}
-
-function isInvalidLogin(err: unknown) {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /invalid login|invalid credentials/i.test(msg);
-}
-
 export async function loginStudent(rollNo: string, password: string): Promise<AuthUser> {
   const email = rollToEmail(rollNo);
   setState({ loading: true });
@@ -197,16 +155,11 @@ export async function loginStudent(rollNo: string, password: string): Promise<Au
     try {
       await trySignIn(email, password);
     } catch (err) {
-      if (isInvalidLogin(err)) {
-        const seeded = await ensureDemoSeeded(email, password);
-        if (seeded) {
-          await trySignIn(email, password);
-        } else {
-          throw new Error("Invalid registration number or password");
-        }
-      } else {
-        throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/invalid login|invalid credentials/i.test(msg)) {
+        throw new Error("Invalid registration number or password");
       }
+      throw err;
     }
     const { data } = await supabase.auth.getUser();
     if (!data.user) throw new Error("Login failed");
@@ -226,16 +179,11 @@ export async function loginAdmin(email: string, password: string): Promise<AuthU
     try {
       await trySignIn(e, password);
     } catch (err) {
-      if (isInvalidLogin(err)) {
-        const seeded = await ensureDemoSeeded(e, password);
-        if (seeded) {
-          await trySignIn(e, password);
-        } else {
-          throw new Error("Invalid email or password");
-        }
-      } else {
-        throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/invalid login|invalid credentials/i.test(msg)) {
+        throw new Error("Invalid email or password");
       }
+      throw err;
     }
     const { data } = await supabase.auth.getUser();
     if (!data.user) throw new Error("Login failed");
@@ -275,11 +223,12 @@ export async function signupStudent(input: {
     if (error) throw new Error(error.message);
     if (!data.user) throw new Error("Signup failed");
 
-    const u = await loadRoleAndProfile(data.user.id, email, data.user.user_metadata ?? metadata);
-    setState({ user: data.session ? u : null, loading: false, hydrated: true });
     if (!data.session) {
-      throw new Error("Account created. Confirm your email, then sign in.");
+      // Email confirmation required — sign in explicitly.
+      await trySignIn(email, input.password);
     }
+    const u = await loadRoleAndProfile(data.user.id, email, data.user.user_metadata ?? metadata);
+    setState({ user: u, loading: false, hydrated: true });
     return u;
   } catch (err) {
     setState({ loading: false });
