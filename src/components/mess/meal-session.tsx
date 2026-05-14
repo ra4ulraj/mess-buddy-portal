@@ -4,8 +4,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { Clock3, RefreshCw } from "lucide-react";
 import { SectionCard } from "./section-card";
 import {
-  generateQrToken,
   getActiveMeal,
+  publishQrSession,
   MEAL_WINDOWS,
   TOKEN_TTL_MS,
   todayKey,
@@ -22,6 +22,7 @@ function formatHour(h: number) {
 export function MealSession() {
   const store = useMessStore();
   const [, setTick] = useState(0);
+  const [session, setSession] = useState<{ token: string; expiresAt: number } | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
@@ -29,13 +30,28 @@ export function MealSession() {
   }, []);
 
   const active = getActiveMeal();
-  const token = generateQrToken(active);
   const day = todayKey();
   const taken = active ? !!store.attendance[day]?.[active] : false;
-  const expiresIn = token
-    ? Math.max(0, Math.ceil((Number(token.split("|")[3]) - Date.now()) / 1000))
-    : 0;
+  const token = session?.token ?? null;
+  const expiresIn = session ? Math.max(0, Math.ceil((session.expiresAt - Date.now()) / 1000)) : 0;
   const pct = Math.max(0, Math.min(100, (expiresIn / (TOKEN_TTL_MS / 1000)) * 100));
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!active) {
+      setSession(null);
+      return;
+    }
+    if (session && session.expiresAt - Date.now() > 1000) return;
+    publishQrSession(active)
+      .then((s) => {
+        if (!cancelled) setSession(s);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [active, session?.expiresAt]);
 
   return (
     <motion.div

@@ -111,7 +111,7 @@ export function ScannerModal({
 
   async function handleDecoded(qr: string) {
     stopScanner();
-    const validation = validateQr(qr);
+    const validation = await validateQr(qr);
     if (!validation.ok) {
       const r = await commitInvalid(qr, validation.reason);
       setRecord(r);
@@ -144,7 +144,7 @@ export function ScannerModal({
 
   async function answerCredit(yes: boolean) {
     if (!pendingQr) return;
-    const v = validateQr(pendingQr);
+    const v = await validateQr(pendingQr);
     const sessionMeal = v.ok ? v.meal : undefined;
     try {
       const r = await commitScan(pendingQr, yes, sessionMeal);

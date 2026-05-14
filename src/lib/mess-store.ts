@@ -83,29 +83,60 @@ export function activeMealNow(): SessionMeal | null {
 export function getActiveMeal(): SessionMeal | null {
   return state.activeMealOverride ?? activeMealNow();
 }
-export function generateQrToken(meal?: SessionMeal | null): string | null {
+
+// Publish a fresh QR session to Supabase. Returns a token string that
+// students can scan from any device. Token format: `MESS|<meal>|<token-id>`.
+// The qr_sessions row stores the meal, token, and expires_at.
+export async function publishQrSession(
+  meal?: SessionMeal | null,
+  ttlMs = TOKEN_TTL_MS,
+): Promise<{ token: string; expiresAt: number } | null> {
   const m = meal ?? getActiveMeal();
   if (!m) return null;
-  return `MESS|${m}|${todayKey()}|${Date.now() + TOKEN_TTL_MS}|${state.tokenSalt}`;
+  const userId = currentUserId ?? getCurrentUser()?.id ?? null;
+  const tokenId =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const token = `MESS|${m}|${tokenId}`;
+  const expiresAt = new Date(Date.now() + ttlMs);
+  const { error } = await supabase.from("qr_sessions").insert({
+    meal_type: m,
+    qr_token: token,
+    expires_at: expiresAt.toISOString(),
+    issued_by: userId,
+  });
+  if (error) throw new Error(error.message);
+  return { token, expiresAt: expiresAt.getTime() };
 }
+
 export type ValidationResult =
   | { ok: true; meal: SessionMeal }
   | { ok: false; reason: string };
-export function validateQr(qr: string): ValidationResult {
+export async function validateQr(qr: string): Promise<ValidationResult> {
   const parts = qr.split("|");
-  if (parts.length !== 5 || parts[0] !== "MESS")
+  if (parts.length < 2 || parts[0] !== "MESS")
     return { ok: false, reason: "Invalid QR" };
-  const [, meal, day, expiryStr, salt] = parts;
+  const meal = parts[1];
   if (!["Breakfast", "Lunch", "Dinner"].includes(meal))
     return { ok: false, reason: "Unknown meal token" };
-  if (salt !== state.tokenSalt) return { ok: false, reason: "QR revoked" };
-  if (day !== todayKey()) return { ok: false, reason: "QR expired (old day)" };
-  const expiry = Number(expiryStr);
-  if (!Number.isFinite(expiry) || Date.now() > expiry)
-    return { ok: false, reason: "QR expired" };
   const active = getActiveMeal();
   if (!active) return { ok: false, reason: "No active meal session" };
   if (active !== meal) return { ok: false, reason: `Not ${meal} time` };
+
+  // Look up the QR session in the database — works across devices.
+  const { data: session, error } = await supabase
+    .from("qr_sessions")
+    .select("id, meal_type, expires_at")
+    .eq("qr_token", qr)
+    .maybeSingle();
+  if (error) return { ok: false, reason: "Could not verify QR" };
+  if (!session) return { ok: false, reason: "QR revoked" };
+  if (session.meal_type !== meal)
+    return { ok: false, reason: "QR meal mismatch" };
+  if (new Date(session.expires_at).getTime() < Date.now())
+    return { ok: false, reason: "QR expired" };
+
   const today = state.attendance[todayKey()] ?? {};
   if (today[meal as SessionMeal]) return { ok: false, reason: "Already taken" };
   return { ok: true, meal: meal as SessionMeal };
