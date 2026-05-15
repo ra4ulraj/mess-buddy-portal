@@ -478,9 +478,9 @@ function ChartsPanel({
       if (r.status === "invalid") continue;
       const i = idx.get(r.scanned_date);
       if (i === undefined) continue;
-      if (r.meal_type in days[i]) {
-        (days[i] as Record<string, number | string>)[r.meal_type] =
-          ((days[i] as Record<string, number>)[r.meal_type] ?? 0) + 1;
+      const row = days[i] as unknown as Record<string, number>;
+      if (r.meal_type === "Breakfast" || r.meal_type === "Lunch" || r.meal_type === "Dinner") {
+        row[r.meal_type] = (row[r.meal_type] ?? 0) + 1;
       }
     }
     return days;
