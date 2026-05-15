@@ -5,6 +5,7 @@ import { QrScanner } from "@/components/mess/qr-scanner";
 import { StatusCards } from "@/components/mess/status-cards";
 import { QuickActions } from "@/components/mess/quick-actions";
 import { AttendanceHistory } from "@/components/mess/attendance-history";
+import { AttendanceSummary } from "@/components/mess/attendance-summary";
 import { PaymentHistory } from "@/components/mess/payment-history";
 
 export const Route = createFileRoute("/")({
@@ -38,6 +39,7 @@ function MessPortal() {
         <QrScanner />
         <StatusCards />
         <QuickActions />
+        <AttendanceSummary />
         <AttendanceHistory />
         <PaymentHistory />
       </div>
