@@ -215,13 +215,17 @@ export function AttendanceHistory() {
                         >
                           <span
                             aria-hidden
-                            className="absolute -left-[18px] top-4 h-2.5 w-2.5 rounded-full ring-4"
-                            style={{
-                              background: meta.dot,
-                              boxShadow: `0 0 10px ${meta.dot}`,
-                              ["--tw-ring-color" as string]: "var(--background)",
-                            }}
-                          />
+                            className="absolute -left-[18px] top-4 grid h-3 w-3 place-items-center rounded-full"
+                            style={{ background: "var(--background)" }}
+                          >
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{
+                                background: meta.dot,
+                                boxShadow: `0 0 8px ${meta.dot}`,
+                              }}
+                            />
+                          </span>
                           <div
                             className="flex items-center justify-between rounded-2xl border border-border bg-card px-3.5 py-3"
                             style={{ boxShadow: "var(--shadow-card)" }}
