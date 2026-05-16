@@ -3,12 +3,18 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChefHat } from "lucide-react";
 import { useAuthStore } from "@/lib/auth-store";
-import { syncForUser } from "@/lib/mess-store";
+import { syncForUser, useMessStore } from "@/lib/mess-store";
+import {
+  syncNotifications,
+  startNotificationDaemon,
+  registerMessReader,
+} from "@/lib/notifications-store";
 
 const PUBLIC_PATHS = new Set(["/login", "/signup", "/forgot-password"]);
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, hydrated } = useAuthStore();
+  const mess = useMessStore();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [showSplash, setShowSplash] = useState(true);
@@ -20,7 +26,19 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void syncForUser(user?.id ?? null);
+    void syncNotifications(user?.id ?? null);
   }, [user?.id]);
+
+  useEffect(() => {
+    registerMessReader(() => ({
+      balance: mess.balance,
+      attendance: mess.attendance,
+    }));
+  }, [mess.balance, mess.attendance]);
+
+  useEffect(() => {
+    if (user) startNotificationDaemon();
+  }, [user]);
 
   useEffect(() => {
     if (!hydrated || showSplash) return;
