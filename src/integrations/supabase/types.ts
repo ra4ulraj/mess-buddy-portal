@@ -50,6 +50,39 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["notification_kind"]
+          link: string | null
+          read: boolean
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["notification_kind"]
+          link?: string | null
+          read?: boolean
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["notification_kind"]
+          link?: string | null
+          read?: boolean
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number
@@ -190,6 +223,7 @@ export type Database = {
       app_role: "admin" | "student"
       attendance_status: "approved" | "credit" | "invalid"
       meal_type: "Breakfast" | "Lunch" | "Dinner"
+      notification_kind: "meal" | "due" | "admin" | "system"
       payment_status: "Paid" | "Credit" | "Pending"
       payment_type: "recharge" | "credit" | "due"
     }
@@ -322,6 +356,7 @@ export const Constants = {
       app_role: ["admin", "student"],
       attendance_status: ["approved", "credit", "invalid"],
       meal_type: ["Breakfast", "Lunch", "Dinner"],
+      notification_kind: ["meal", "due", "admin", "system"],
       payment_status: ["Paid", "Credit", "Pending"],
       payment_type: ["recharge", "credit", "due"],
     },
