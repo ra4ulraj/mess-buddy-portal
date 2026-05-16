@@ -2,13 +2,10 @@ import { motion } from "framer-motion";
 import { CalendarCheck, CreditCard, Wallet, type LucideIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { computeStats, useMessStore } from "@/lib/mess-store";
 import { PaymentDialog } from "./payment-dialog";
 
 export function QuickActions() {
   const [open, setOpen] = useState(false);
-  const { scans } = useMessStore();
-  const stats = computeStats(scans);
   const navigate = useNavigate();
 
   const actions: {
