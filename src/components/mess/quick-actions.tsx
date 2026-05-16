@@ -1,14 +1,12 @@
 import { motion } from "framer-motion";
 import { CalendarCheck, CreditCard, Wallet, type LucideIcon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { toast } from "sonner";
-import { computeStats, useMessStore } from "@/lib/mess-store";
 import { PaymentDialog } from "./payment-dialog";
 
 export function QuickActions() {
   const [open, setOpen] = useState(false);
-  const { balance, scans } = useMessStore();
-  const stats = computeStats(scans);
+  const navigate = useNavigate();
 
   const actions: {
     label: string;
@@ -26,20 +24,16 @@ export function QuickActions() {
       label: "Attendance",
       icon: CalendarCheck,
       tint: "var(--gradient-success)",
-      onClick: () =>
-        toast(`Attendance ${stats.attendancePct}%`, {
-          description: `${stats.approved + stats.credit} of ${stats.totalScans} scans counted.`,
-        }),
+      onClick: () => {
+        const el = document.getElementById("attendance-summary");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      },
     },
     {
-      label: "Balance",
+      label: "Wallet",
       icon: Wallet,
       tint: "var(--gradient-warning)",
-      onClick: () =>
-        toast(`Balance ₹${balance.toFixed(2)}`, {
-          description:
-            balance < 0 ? "On credit · settle soon" : "Plan ends 30 Nov",
-        }),
+      onClick: () => navigate({ to: "/wallet" }),
     },
   ];
 
