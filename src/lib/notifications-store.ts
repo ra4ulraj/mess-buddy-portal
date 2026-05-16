@@ -1,11 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuthStore } from "./auth-store";
 import {
   MEAL_WINDOWS,
   activeMealNow,
   todayKey,
-  useMessStore,
   type SessionMeal,
 } from "./mess-store";
 
@@ -221,19 +219,11 @@ function ensureDueAlert(balance: number) {
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 export function startNotificationDaemon() {
   if (pollTimer || typeof window === "undefined") return;
-  const tick = () => {
-    const auth = useAuthStore.getState?.();
-    void auth; // not a zustand store; ignore
-    if (!currentUserId) return;
-    const mess = useMessStore.getState?.();
-    void mess;
-  };
-  void tick;
   pollTimer = setInterval(() => {
     if (!currentUserId || !state.hydrated) return;
-    const meal = activeMealNow();
     const mess = currentMess();
     if (!mess) return;
+    const meal = activeMealNow();
     if (meal) ensureMealReminder(meal, mess.attendance);
     ensureDueAlert(mess.balance);
   }, 30_000);
