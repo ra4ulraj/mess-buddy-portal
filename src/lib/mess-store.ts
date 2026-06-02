@@ -526,7 +526,17 @@ export async function commitScan(
     })
     .select("id, meal_type, status, amount, balance_after, reason, scanned_at")
     .single();
-  if (insErr) throw new Error(insErr.message);
+  if (insErr) {
+    // Unique partial index on (student_id, scanned_date, meal_type)
+    // catches duplicate scans across devices / retries. Surface a clean
+    // "already taken" instead of a generic DB error and make sure local
+    // state mirrors the DB by re-loading.
+    if (insErr.code === "23505") {
+      void loadAttendance(userId);
+      throw new Error("Already taken");
+    }
+    throw new Error(insErr.message);
+  }
 
   const { error: upErr } = await supabase
     .from("profiles")
