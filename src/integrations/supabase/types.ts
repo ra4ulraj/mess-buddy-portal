@@ -211,6 +211,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_balance_delta: {
+        Args: { _delta: number; _user_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
