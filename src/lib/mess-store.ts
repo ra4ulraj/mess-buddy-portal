@@ -593,7 +593,6 @@ export async function addPayment(amount: number, method = "UPI · GPay"): Promis
     method,
   };
   if (userId) {
-    const newBalance = state.balance + amount;
     await insertPayment({
       student_id: userId,
       payment_type: "recharge",
@@ -602,12 +601,17 @@ export async function addPayment(amount: number, method = "UPI · GPay"): Promis
       status: "Paid",
       method,
     });
-    const { error } = await supabase
-      .from("profiles")
-      .update({ balance: newBalance })
-      .eq("id", userId);
-    if (error) throw new Error(error.message);
-    setState({ balance: newBalance });
+    const { data: newBal, error } = await supabase.rpc(
+      "apply_balance_delta",
+      { _user_id: userId, _delta: amount },
+    );
+    if (error) {
+      void loadProfile(userId);
+      throw new Error(error.message);
+    }
+    const authoritativeBalance =
+      typeof newBal === "number" ? newBal : Number(newBal ?? state.balance + amount);
+    setState({ balance: authoritativeBalance });
     void loadPayments(userId);
   } else {
     setState({ payments: [rec, ...state.payments].slice(0, 60) });
