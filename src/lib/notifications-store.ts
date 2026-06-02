@@ -91,6 +91,7 @@ export async function syncNotifications(userId: string | null) {
   }
   currentUserId = userId;
   if (!userId) {
+    stopNotificationDaemon();
     setState({ ...DEFAULT, hydrated: true });
     return;
   }
@@ -227,6 +228,15 @@ export function startNotificationDaemon() {
     if (meal) ensureMealReminder(meal, mess.attendance);
     ensureDueAlert(mess.balance);
   }, 30_000);
+}
+
+export function stopNotificationDaemon() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  sentMealKeys.clear();
+  lastDueAlertTs = 0;
 }
 
 // Lightweight accessor that avoids importing the hook itself in a non-component
