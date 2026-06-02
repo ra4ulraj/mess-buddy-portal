@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChefHat } from "lucide-react";
@@ -18,6 +18,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [showSplash, setShowSplash] = useState(true);
+  const messRef = useRef(mess);
+  messRef.current = mess;
 
   useEffect(() => {
     const t = setTimeout(() => setShowSplash(false), 1100);
@@ -31,10 +33,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     registerMessReader(() => ({
-      balance: mess.balance,
-      attendance: mess.attendance,
+      balance: messRef.current.balance,
+      attendance: messRef.current.attendance,
     }));
-  }, [mess.balance, mess.attendance]);
+  }, []);
 
   useEffect(() => {
     if (user) startNotificationDaemon();

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Coffee, UtensilsCrossed, Moon, TrendingUp } from "lucide-react";
 import { useMessStore, type SessionMeal } from "@/lib/mess-store";
@@ -19,6 +19,10 @@ function monthBounds(now = new Date()) {
 
 export function AttendanceSummary() {
   const { scans, loading } = useMessStore();
+  const [monthLabel, setMonthLabel] = useState("");
+  useEffect(() => {
+    setMonthLabel(new Date().toLocaleString(undefined, { month: "long" }));
+  }, []);
 
   const stats = useMemo(() => {
     const { startMs, daysSoFar } = monthBounds();
@@ -42,7 +46,6 @@ export function AttendanceSummary() {
   const r = (size - stroke) / 2;
   const C = 2 * Math.PI * r;
   const offset = C - (stats.pct / 100) * C;
-  const monthLabel = new Date().toLocaleString(undefined, { month: "long" });
 
   return (
     <section className="mt-7">
