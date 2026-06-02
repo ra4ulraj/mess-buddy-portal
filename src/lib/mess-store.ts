@@ -538,11 +538,19 @@ export async function commitScan(
     throw new Error(insErr.message);
   }
 
-  const { error: upErr } = await supabase
-    .from("profiles")
-    .update({ balance: balanceAfter })
-    .eq("id", userId);
-  if (upErr) throw new Error(upErr.message);
+  // Atomic balance update via RPC — avoids read-modify-write races between
+  // concurrent scans / recharges. Returns the authoritative new balance.
+  const { data: newBal, error: upErr } = await supabase.rpc(
+    "apply_balance_delta",
+    { _user_id: userId, _delta: -amount },
+  );
+  if (upErr) {
+    void loadAttendance(userId);
+    void loadProfile(userId);
+    throw new Error(upErr.message);
+  }
+  const authoritativeBalance =
+    typeof newBal === "number" ? newBal : Number(newBal ?? balanceAfter);
 
   if (scanState === "credit") {
     await insertPayment({
@@ -557,7 +565,8 @@ export async function commitScan(
 
   const rec = rowToScan(ins as DbAttendance);
   rec.qr = qr;
-  setState({ balance: balanceAfter });
+  rec.balanceAfter = authoritativeBalance;
+  setState({ balance: authoritativeBalance });
   void loadAttendance(userId);
   void loadPayments(userId);
   return rec;
